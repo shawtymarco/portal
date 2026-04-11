@@ -64,9 +64,8 @@ func (t *translator) translatePacket(pk packet.Packet) {
 		for i := range pk.EntityLinks {
 			pk.EntityLinks[i] = t.translateEntityLink(pk.EntityLinks[i])
 		}
-		pk.AbilityData.EntityUniqueID = t.translateUniqueID(pk.AbilityData.EntityUniqueID)
 	case *packet.AddVolumeEntity:
-		pk.EntityRuntimeID = t.translateRuntimeID(pk.EntityRuntimeID)
+		pk.EntityRuntimeID = t.translateRuntimeID32(pk.EntityRuntimeID)
 	case *packet.AdventureSettings:
 		pk.PlayerUniqueID = t.translateUniqueID(pk.PlayerUniqueID)
 	case *packet.Animate:
@@ -82,7 +81,7 @@ func (t *translator) translatePacket(pk packet.Packet) {
 		pk.CameraEntityUniqueID = t.translateUniqueID(pk.CameraEntityUniqueID)
 		pk.TargetPlayerUniqueID = t.translateUniqueID(pk.TargetPlayerUniqueID)
 	case *packet.ChangeMobProperty:
-		pk.EntityUniqueID = t.translateRuntimeID(pk.EntityUniqueID)
+		pk.EntityUniqueID = t.translateUniqueID(pk.EntityUniqueID)
 	case *packet.ClientBoundMapItemData:
 		for i, x := range pk.TrackedObjects {
 			if x.Type == protocol.MapObjectTypeEntity {
@@ -111,7 +110,7 @@ func (t *translator) translatePacket(pk packet.Packet) {
 	case *packet.EmoteList:
 		pk.PlayerRuntimeID = t.translateRuntimeID(pk.PlayerRuntimeID)
 	case *packet.Event:
-		pk.EntityRuntimeID = t.translateRuntimeID(pk.EntityRuntimeID)
+		pk.EntityRuntimeID = t.translateRuntimeIDInt64(pk.EntityRuntimeID)
 		switch data := pk.Event.(type) {
 		case *protocol.MobKilledEvent:
 			data.KillerEntityUniqueID = t.translateUniqueID(data.KillerEntityUniqueID)
@@ -119,8 +118,7 @@ func (t *translator) translatePacket(pk packet.Packet) {
 		case *protocol.BossKilledEvent:
 			data.BossEntityUniqueID = t.translateUniqueID(data.BossEntityUniqueID)
 		case *protocol.PetDiedEvent:
-			data.KillerEntityUniqueID = t.translateUniqueID(data.KillerEntityUniqueID)
-			data.PetEntityUniqueID = t.translateUniqueID(data.PetEntityUniqueID)
+			// Newer protocol versions no longer expose entity identifiers on this event.
 		}
 	case *packet.Interact:
 		pk.TargetEntityRuntimeID = t.translateRuntimeID(pk.TargetEntityRuntimeID)
@@ -153,7 +151,7 @@ func (t *translator) translatePacket(pk packet.Packet) {
 	case *packet.PlayerAction:
 		pk.EntityRuntimeID = t.translateRuntimeID(pk.EntityRuntimeID)
 	case *packet.PlayerAuthInput:
-		if pk.InputData&packet.InputFlagClientPredictedVehicle != 0 {
+		if pk.InputData.Load(packet.InputFlagClientPredictedVehicle) {
 			pk.ClientPredictedVehicle = t.translateUniqueID(pk.ClientPredictedVehicle)
 		}
 	case *packet.PlayerList:
@@ -163,7 +161,7 @@ func (t *translator) translatePacket(pk packet.Packet) {
 	case *packet.RemoveActor:
 		pk.EntityUniqueID = t.translateUniqueID(pk.EntityUniqueID)
 	case *packet.RemoveVolumeEntity:
-		pk.EntityRuntimeID = t.translateRuntimeID(pk.EntityRuntimeID)
+		pk.EntityRuntimeID = t.translateRuntimeID32(pk.EntityRuntimeID)
 	case *packet.Respawn:
 		pk.EntityRuntimeID = t.translateRuntimeID(pk.EntityRuntimeID)
 	case *packet.SetActorData:
@@ -237,6 +235,17 @@ func (t *translator) translateRuntimeID(id uint64) uint64 {
 	return id
 }
 
+func (t *translator) translateRuntimeID32(id uint32) uint32 {
+	return uint32(t.translateRuntimeID(uint64(id)))
+}
+
+func (t *translator) translateRuntimeIDInt64(id int64) int64 {
+	if id < 0 {
+		return id
+	}
+	return int64(t.translateRuntimeID(uint64(id)))
+}
+
 // translateUniqueID returns the correct entity unique ID for the client to function properly.
 func (t *translator) translateUniqueID(id int64) int64 {
 	original := t.originalUniqueID
@@ -262,19 +271,53 @@ func (t *translator) translateEntityLink(x protocol.EntityLink) protocol.EntityL
 func (t *translator) translateEntityMetadata(x map[uint32]interface{}) map[uint32]interface{} {
 	for k, v := range x {
 		switch k {
-		case 5: // Owner ID
-			x[5] = t.translateUniqueID(v.(int64))
-		case 6: // Target ID
-			x[6] = t.translateUniqueID(v.(int64))
-		case 17: // Shooter ID
-			x[17] = t.translateUniqueID(v.(int64))
-		case 37: // Leash holder ID
-			x[37] = t.translateUniqueID(v.(int64))
-		case 88: // Player agent ID
-			x[88] = t.translateUniqueID(v.(int64))
-		case 124: // Base Runtime ID
-			x[124] = t.translateRuntimeID(v.(uint64))
+		case 5, 6, 17, 37, 88: // Unique ID metadata entries.
+			x[k] = t.translateMetadataUniqueID(v)
+		case 124: // Base Runtime ID.
+			x[k] = t.translateMetadataRuntimeID(v)
 		}
 	}
 	return x
+}
+
+func (t *translator) translateMetadataUniqueID(v interface{}) interface{} {
+	switch value := v.(type) {
+	case int64:
+		return t.translateUniqueID(value)
+	case int32:
+		return int32(t.translateUniqueID(int64(value)))
+	case int:
+		return int(t.translateUniqueID(int64(value)))
+	case uint64:
+		return uint64(t.translateUniqueID(int64(value)))
+	case uint32:
+		return uint32(t.translateUniqueID(int64(value)))
+	case uint:
+		return uint(t.translateUniqueID(int64(value)))
+	default:
+		return v
+	}
+}
+
+func (t *translator) translateMetadataRuntimeID(v interface{}) interface{} {
+	switch value := v.(type) {
+	case uint64:
+		return t.translateRuntimeID(value)
+	case uint32:
+		return t.translateRuntimeID32(value)
+	case int64:
+		return t.translateRuntimeIDInt64(value)
+	case int32:
+		if value < 0 {
+			return value
+		}
+		return int32(t.translateRuntimeID(uint64(value)))
+	case int:
+		if value < 0 {
+			return value
+		}
+		return int(t.translateRuntimeID(uint64(value)))
+	default:
+		return v
+	}
 }

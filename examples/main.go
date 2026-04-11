@@ -42,7 +42,7 @@ func main() {
 		logger.Fatalf("unable to load resource packs: %v", err)
 	}
 	for i, pack := range resourcePacks {
-		key, ok := conf.ResourcePacks.EncryptionKeys[pack.UUID()]
+		key, ok := conf.ResourcePacks.EncryptionKeys[pack.UUID().String()]
 		if ok {
 			resourcePacks[i] = pack.WithContentKey(key)
 		}
@@ -76,7 +76,9 @@ func main() {
 	for {
 		s, err := p.Accept()
 		if err != nil {
-			s.Disconnect(text.Colourf("<red>%v</red>", err))
+			if s != nil {
+				s.Disconnect(text.Colourf("<red>%v</red>", err))
+			}
 			p.Logger().Errorf("failed to accept connection: %v", err)
 			continue
 		}
