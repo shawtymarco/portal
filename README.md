@@ -25,7 +25,7 @@ Portal supports any combination of backend server software through its TCP socke
 
 | Platform | Library | Type | Engine | Status |
 |:---|:---|:---|:---|:---|
-| **PocketMine-MP** (PHP) | [PortalPM](https://github.com/MEMOxiiii/PortalPM) | Plugin | PocketMine-MP 5.x | ✅ Supported |
+| **PocketMine-MP** (PHP) | [PortalPM](https://github.com/MEMOxiiii/PortalPM) | Plugin | [PocketMine-MP](https://github.com/pmmp/PocketMine-MP) | ✅ Supported |
 | **Dragonfly** (Go) | [PortalDF](https://github.com/MEMOxiiii/PortalDF) | Library | [Dragonfly](https://github.com/df-mc/dragonfly) | ✅ Supported |
 | **GeyserMC** (Java) | [Portal-GeyserMC](https://github.com/MEMOxiiii/Portal-GeyserMC) | Extension | [GeyserMC](https://geysermc.org/) 2.9.5+ | ✅ Supported |
 | **NukkitX / PowerNukkitX** (Java) | — | Plugin | [NukkitX](https://github.com/CloudburstMC/Nukkit) / [PowerNukkitX](https://github.com/PowerNukkitX/PowerNukkitX) | 🔜 Coming Soon |
