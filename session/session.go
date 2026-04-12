@@ -48,6 +48,7 @@ type Session struct {
 
 	transferring atomic.Bool
 	postTransfer atomic.Bool
+	dead         atomic.Bool
 	once         sync.Once
 }
 
@@ -198,6 +199,17 @@ func (s *Session) Transfer(srv *server.Server) (err error) {
 	s.handler().HandleTransfer(ctx, srv)
 
 	ctx.Continue(func() {
+		// If the player is dead, force-respawn them before transferring.
+		// Without this, the dimension trick fails and the player gets stuck.
+		if s.dead.Load() {
+			_ = s.conn.WritePacket(&packet.Respawn{
+				Position:        s.conn.GameData().PlayerPosition,
+				State:           packet.RespawnStateReadyToSpawn,
+				EntityRuntimeID: s.originalRuntimeID,
+			})
+			s.dead.Store(false)
+		}
+
 		conn, err := s.dial(srv)
 		if err != nil {
 			return
@@ -223,8 +235,8 @@ func (s *Session) Transfer(srv *server.Server) (err error) {
 
 		chunkX := int32(pos.X()) >> 4
 		chunkZ := int32(pos.Z()) >> 4
-		for x := int32(-1); x <= 1; x++ {
-			for z := int32(-1); z <= 1; z++ {
+		for x := int32(-2); x <= 2; x++ {
+			for z := int32(-2); z <= 2; z++ {
 				_ = s.conn.WritePacket(&packet.LevelChunk{
 					Position:      protocol.ChunkPos{chunkX + x, chunkZ + z},
 					Dimension:     packet.DimensionNether,

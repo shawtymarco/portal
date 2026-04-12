@@ -63,6 +63,25 @@ func handlePackets(s *Session) {
 						_ = s.conn.WritePacket(&packet.GameRulesChanged{GameRules: gameData.GameRules})
 						_ = s.conn.WritePacket(&packet.SetPlayerGameType{GameType: gameData.PlayerGameMode})
 
+						// Tell the client to request chunks around the new position immediately.
+						_ = s.conn.WritePacket(&packet.NetworkChunkPublisherUpdate{
+							Position: protocol.BlockPos{
+								int32(gameData.PlayerPosition.X()),
+								int32(gameData.PlayerPosition.Y()),
+								int32(gameData.PlayerPosition.Z()),
+							},
+							Radius: uint32(gameData.ChunkRadius) << 4,
+						})
+
+						// Ensure the player is not stuck on the death screen after transfer.
+						if s.dead.CAS(true, false) {
+							_ = s.conn.WritePacket(&packet.Respawn{
+								Position:        gameData.PlayerPosition,
+								State:           packet.RespawnStateReadyToSpawn,
+								EntityRuntimeID: s.originalRuntimeID,
+							})
+						}
+
 						w.Wait()
 
 						_ = s.serverConn.Close()
@@ -163,6 +182,12 @@ func handlePackets(s *Session) {
 				s.scoreboards.Remove(pk.ObjectiveName)
 			case *packet.SetDisplayObjective:
 				s.scoreboards.Add(pk.ObjectiveName)
+			case *packet.Respawn:
+				if pk.State == packet.RespawnStateSearchingForSpawn {
+					s.dead.Store(true)
+				} else if pk.State == packet.RespawnStateReadyToSpawn {
+					s.dead.Store(false)
+				}
 			}
 
 			ctx := event.C()
