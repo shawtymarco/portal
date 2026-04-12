@@ -213,18 +213,19 @@ func (s *Session) Transfer(srv *server.Server) (err error) {
 
 		// Notify the target server to disconnect any stale session for this player.
 		// This prevents the "already logged in" error when the old Raknet session
-		// hasn't been cleaned up yet on servers like GeyserMC.
+		// hasn't been cleaned up yet on servers like GeyserMC/Spigot.
 		if s.store.PreTransfer != nil {
 			s.store.PreTransfer(srv.Name(), s.conn.IdentityData().DisplayName)
-			time.Sleep(500 * time.Millisecond)
+			time.Sleep(1 * time.Second)
 		}
 
 		conn, err := s.dial(srv)
 		if err != nil {
-			// If the server still thinks the player is logged in, retry once after a longer delay.
+			// If the server still thinks the player is logged in, retry once after a longer delay
+			// to allow the Spigot server to fully clean up the kicked session.
 			if strings.Contains(err.Error(), "already logged in") {
 				s.log.Debugf("retrying transfer to %s for %s after 'already logged in' error", srv.Name(), s.conn.IdentityData().DisplayName)
-				time.Sleep(2 * time.Second)
+				time.Sleep(3 * time.Second)
 				conn, err = s.dial(srv)
 			}
 			if err != nil {
