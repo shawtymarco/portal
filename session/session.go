@@ -212,9 +212,14 @@ func (s *Session) Transfer(srv *server.Server) (err error) {
 
 		conn, err := s.dial(srv)
 		if err != nil {
+			s.log.Errorf("transfer failed: could not dial %s: %v", srv.Name(), err)
+			s.setTransferring(false)
 			return
 		}
 		if err = conn.DoSpawnTimeout(time.Minute); err != nil {
+			_ = conn.Close()
+			s.log.Errorf("transfer failed: spawn timeout on %s: %v", srv.Name(), err)
+			s.setTransferring(false)
 			return
 		}
 
