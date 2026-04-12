@@ -17,4 +17,5 @@ const (
 	IDFindPlayerRequest
 	IDFindPlayerResponse
 	IDUpdatePlayerLatency
+	IDDisconnectPlayer
 )

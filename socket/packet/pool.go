@@ -36,6 +36,7 @@ func init() {
 		IDFindPlayerRequest:   func() Packet { return &FindPlayerRequest{} },
 		IDFindPlayerResponse:  func() Packet { return &FindPlayerResponse{} },
 		IDUpdatePlayerLatency: func() Packet { return &UpdatePlayerLatency{} },
+		IDDisconnectPlayer:    func() Packet { return &DisconnectPlayer{} },
 	}
 	for id, pk := range packets {
 		Register(id, pk)

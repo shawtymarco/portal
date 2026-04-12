@@ -10,6 +10,10 @@ type Store struct {
 	mu           sync.Mutex
 	sessions     map[uuid.UUID]*Session
 	sessionNames map[string]*Session
+
+	// PreTransfer is called before a transfer dial to notify the target server to clean up
+	// stale sessions. It receives the target server name and the player name being transferred.
+	PreTransfer func(serverName, playerName string)
 }
 
 // NewDefaultStore creates a new Store and returns it.

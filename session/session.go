@@ -2,6 +2,7 @@ package session
 
 import (
 	"errors"
+	"strings"
 	"sync"
 	"time"
 
@@ -210,11 +211,27 @@ func (s *Session) Transfer(srv *server.Server) (err error) {
 			s.dead.Store(false)
 		}
 
+		// Notify the target server to disconnect any stale session for this player.
+		// This prevents the "already logged in" error when the old Raknet session
+		// hasn't been cleaned up yet on servers like GeyserMC.
+		if s.store.PreTransfer != nil {
+			s.store.PreTransfer(srv.Name(), s.conn.IdentityData().DisplayName)
+			time.Sleep(500 * time.Millisecond)
+		}
+
 		conn, err := s.dial(srv)
 		if err != nil {
-			s.log.Errorf("transfer failed: could not dial %s: %v", srv.Name(), err)
-			s.setTransferring(false)
-			return
+			// If the server still thinks the player is logged in, retry once after a longer delay.
+			if strings.Contains(err.Error(), "already logged in") {
+				s.log.Debugf("retrying transfer to %s for %s after 'already logged in' error", srv.Name(), s.conn.IdentityData().DisplayName)
+				time.Sleep(2 * time.Second)
+				conn, err = s.dial(srv)
+			}
+			if err != nil {
+				s.log.Errorf("transfer failed: could not dial %s: %v", srv.Name(), err)
+				s.setTransferring(false)
+				return
+			}
 		}
 		if err = conn.DoSpawnTimeout(time.Minute); err != nil {
 			_ = conn.Close()

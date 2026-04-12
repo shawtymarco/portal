@@ -7,6 +7,7 @@ import (
 	portallog "github.com/paroxity/portal/log"
 	"github.com/paroxity/portal/session"
 	"github.com/paroxity/portal/socket"
+	socketpacket "github.com/paroxity/portal/socket/packet"
 	"github.com/sandertv/gophertunnel/minecraft"
 	"github.com/sandertv/gophertunnel/minecraft/text"
 	"github.com/sirupsen/logrus"
@@ -69,6 +70,16 @@ func main() {
 	if err := socketServer.Listen(); err != nil {
 		p.Logger().Fatalf("socket server failed to listen: %v", err)
 	}
+
+	// Set up pre-transfer hook to notify target servers to disconnect stale sessions.
+	p.SessionStore().PreTransfer = func(serverName, playerName string) {
+		client, ok := socketServer.Client(serverName)
+		if !ok {
+			return
+		}
+		_ = client.WritePacket(&socketpacket.DisconnectPlayer{PlayerName: playerName})
+	}
+
 	if conf.PlayerLatency.Report {
 		go socketServer.ReportPlayerLatency(time.Second * time.Duration(conf.PlayerLatency.UpdateInterval))
 	}
