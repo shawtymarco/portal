@@ -1,8 +1,10 @@
 package internal
 
+import "github.com/sandertv/gophertunnel/minecraft/protocol"
+
 const (
 	// BedrockProtocolVersion is the supported Minecraft Bedrock protocol ID.
-	BedrockProtocolVersion = 975
+	BedrockProtocolVersion = protocol.CurrentProtocol
 	// BedrockGameVersion is the supported Minecraft Bedrock version string.
-	BedrockGameVersion = "1.26.2"
+	BedrockGameVersion = protocol.CurrentVersion
 )
