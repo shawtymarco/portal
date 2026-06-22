@@ -1,9 +1,10 @@
 package portal
 
 import (
-	"github.com/sandertv/gophertunnel/minecraft/resource"
 	"os"
 	"path/filepath"
+
+	"github.com/sandertv/gophertunnel/minecraft/resource"
 )
 
 // Config represents the base configuration for portal. It holds settings that affect different aspects of the
@@ -59,6 +60,13 @@ type Config struct {
 		Directory string `json:"directory"`
 		// EncryptionKeys is a map of resource pack UUIDs to their encryption key.
 		EncryptionKeys map[string]string `json:"encryption_keys,omitempty"`
+		// HotReload holds settings related to updating resource packs without restarting the proxy.
+		HotReload struct {
+			// Enabled controls whether the proxy should watch for resource pack changes and reload them.
+			Enabled bool `json:"enabled"`
+			// Interval is the amount of seconds between resource pack change checks.
+			Interval int `json:"interval"`
+		} `json:"hot_reload"`
 	} `json:"resource_packs"`
 	// MOTD is the message of the day shown in the server list ping.
 	MOTD string `json:"motd"`
@@ -76,6 +84,7 @@ func DefaultConfig() (c Config) {
 	c.PlayerLatency.Report = true
 	c.PlayerLatency.UpdateInterval = 5
 	c.ResourcePacks.Directory = "resource_packs"
+	c.ResourcePacks.HotReload.Interval = 30
 	c.MOTD = "Portal"
 	c.SubMOTD = "Transfer Proxy"
 	return
@@ -84,6 +93,12 @@ func DefaultConfig() (c Config) {
 // LoadResourcePacks attempts to load all the resource packs in the provided directory. If the directory does not exist,
 // it will be created. If any pack fails to compile, the error will be returned.
 func LoadResourcePacks(dir string) ([]*resource.Pack, error) {
+	return LoadResourcePacksWithContentKeys(dir, nil)
+}
+
+// LoadResourcePacksWithContentKeys attempts to load all resource packs in the provided directory and applies the
+// provided content keys to matching pack UUIDs.
+func LoadResourcePacksWithContentKeys(dir string, encryptionKeys map[string]string) ([]*resource.Pack, error) {
 	err := os.MkdirAll(dir, os.ModePerm)
 	if err != nil && !os.IsExist(err) {
 		return nil, err
@@ -99,6 +114,9 @@ func LoadResourcePacks(dir string) ([]*resource.Pack, error) {
 		pack, err := resource.ReadPath(filepath.Join(dir, file.Name()))
 		if err != nil {
 			return nil, err
+		}
+		if key, ok := encryptionKeys[pack.UUID().String()]; ok {
+			pack = pack.WithContentKey(key)
 		}
 		packs = append(packs, pack)
 	}
