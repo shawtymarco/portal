@@ -2,6 +2,7 @@ package session
 
 import (
 	"errors"
+	"net"
 	"strings"
 	"sync"
 	"time"
@@ -116,6 +117,13 @@ func (s *Session) dial(srv *server.Server) (*minecraft.Conn, error) {
 	c.PlatformOfflineID = ""
 	c.PlayFabID = ""
 	c.ThirdPartyName = i.DisplayName
+
+	// Forward the real client IP so the offline downstream can recover it; without
+	// this the dial originates from the proxy's own address and the downstream sees
+	// the proxy IP. PortalPM reads Waterdog_IP back and applies it to the session.
+	if host, _, err := net.SplitHostPort(s.conn.RemoteAddr().String()); err == nil {
+		c.WaterdogIP = host
+	}
 
 	// For legacy auth servers (e.g. PocketMine), clear XUID as it is embedded in the Xbox JWT chain.
 	// For non-legacy auth servers (e.g. GeyserMC), keep the real XUID so each player has a unique
