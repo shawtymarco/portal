@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/paroxity/portal"
@@ -99,6 +101,8 @@ func main() {
 		go socketServer.ReportPlayerLatency(time.Second * time.Duration(conf.PlayerLatency.UpdateInterval))
 	}
 
+	go waitForShutdown(p, socketServer, logger)
+
 	for {
 		s, err := p.Accept()
 		if err != nil {
@@ -110,6 +114,27 @@ func main() {
 		}
 		_ = s
 	}
+}
+
+// waitForShutdown blocks until an interrupt or termination signal is received, then gracefully disconnects
+// every connected session and closes the proxy's listeners before exiting the process.
+func waitForShutdown(p *portal.Portal, socketServer *socket.DefaultServer, logger internal.Logger) {
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	<-sig
+
+	logger.Infof("shutting down...")
+	for _, s := range p.SessionStore().All() {
+		s.Disconnect(text.Colourf("<yellow>Proxy is shutting down.</yellow>"))
+	}
+	if err := socketServer.Close(); err != nil {
+		logger.Errorf("failed to close socket server: %v", err)
+	}
+	if err := p.Close(); err != nil {
+		logger.Errorf("failed to close proxy listener: %v", err)
+	}
+	logger.Infof("shutdown complete")
+	os.Exit(0)
 }
 
 func readConfig(logger internal.Logger) portal.Config {

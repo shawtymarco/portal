@@ -115,3 +115,12 @@ func (p *Portal) Disconnect(conn *minecraft.Conn, message string) error {
 	}
 	return p.listener.Disconnect(conn, message)
 }
+
+// Close closes the proxy's listener, preventing it from accepting any further player connections. It does
+// not close any of the sessions already connected; callers are expected to disconnect them beforehand.
+func (p *Portal) Close() error {
+	if p.listener == nil {
+		return nil
+	}
+	return p.listener.Close()
+}

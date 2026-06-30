@@ -40,6 +40,9 @@ type Server interface {
 	SessionStore() *session.Store
 	// ServerRegistry returns the registry used to store available servers on the proxy.
 	ServerRegistry() *server.Registry
+
+	// Close closes the socket server's listener, preventing it from accepting any further connections.
+	Close() error
 }
 
 // DefaultServer represents a basic TCP socket server implementation. It allows external connections to
@@ -235,6 +238,14 @@ func (s *DefaultServer) SessionStore() *session.Store {
 // ServerRegistry ...
 func (s *DefaultServer) ServerRegistry() *server.Registry {
 	return s.serverRegistry
+}
+
+// Close ...
+func (s *DefaultServer) Close() error {
+	if s.listener == nil {
+		return nil
+	}
+	return s.listener.Close()
 }
 
 // containsAny checks if the string contains any of the provided sub strings.
