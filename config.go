@@ -101,6 +101,18 @@ type Config struct {
 			MaxAttempts int `json:"max_attempts"`
 		} `json:"rate_limit"`
 	} `json:"security"`
+	// HealthCheck holds settings related to verifying registered servers are actually reachable, rather
+	// than just registered, before load balancing new players onto them.
+	HealthCheck struct {
+		// Enabled determines whether health checking is active.
+		Enabled bool `json:"enabled"`
+		// IntervalSeconds is how often, in seconds, every registered server is pinged.
+		IntervalSeconds int `json:"interval_seconds"`
+		// TimeoutSeconds is how long to wait for a ping response before considering it failed.
+		TimeoutSeconds int `json:"timeout_seconds"`
+		// FailureThreshold is how many consecutive failed pings mark a server unhealthy.
+		FailureThreshold int `json:"failure_threshold"`
+	} `json:"health_check"`
 	// Routing holds settings related to how players are load balanced onto groups of backend servers.
 	Routing struct {
 		// DefaultGroup is the server group new players are load balanced into when they first join the
@@ -155,6 +167,10 @@ func DefaultConfig() (c Config) {
 	c.Metrics.Address = ":9131"
 	c.Cluster.TTLSeconds = 300
 	c.Cluster.Redis.Address = "localhost:6379"
+	c.HealthCheck.Enabled = true
+	c.HealthCheck.IntervalSeconds = 10
+	c.HealthCheck.TimeoutSeconds = 3
+	c.HealthCheck.FailureThreshold = 3
 	c.ResourcePacks.Directory = "resource_packs"
 	c.ResourcePacks.HotReload.Interval = 30
 	c.MOTD = "Portal"

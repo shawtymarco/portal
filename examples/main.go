@@ -17,6 +17,7 @@ import (
 	"github.com/paroxity/portal/internal"
 	portallog "github.com/paroxity/portal/log"
 	"github.com/paroxity/portal/metrics"
+	"github.com/paroxity/portal/server"
 	"github.com/paroxity/portal/session"
 	"github.com/paroxity/portal/socket"
 	socketpacket "github.com/paroxity/portal/socket/packet"
@@ -114,6 +115,18 @@ func main() {
 		go socketServer.ReportPlayerLatency(time.Second * time.Duration(conf.PlayerLatency.UpdateInterval))
 	}
 
+	if conf.HealthCheck.Enabled {
+		checker := server.NewHealthChecker(
+			p.ServerRegistry(),
+			time.Duration(conf.HealthCheck.IntervalSeconds)*time.Second,
+			time.Duration(conf.HealthCheck.TimeoutSeconds)*time.Second,
+			conf.HealthCheck.FailureThreshold,
+			logger,
+			p.Events(),
+		)
+		go checker.Start(context.Background())
+	}
+
 	var clusterBackend cluster.Backend
 	clusterProxyID := conf.Cluster.ProxyID
 	if conf.Cluster.Enabled {
@@ -175,6 +188,15 @@ func main() {
 		metrics.Default.RegisterGauge("portal_players_online", func() float64 { return float64(len(p.SessionStore().All())) })
 		metrics.Default.RegisterGauge("portal_servers_registered", func() float64 { return float64(len(p.ServerRegistry().Servers())) })
 		metrics.Default.RegisterGauge("portal_socket_clients_connected", func() float64 { return float64(len(socketServer.Clients())) })
+		metrics.Default.RegisterGauge("portal_servers_unhealthy", func() float64 {
+			var unhealthy float64
+			for _, srv := range p.ServerRegistry().Servers() {
+				if !srv.Healthy() {
+					unhealthy++
+				}
+			}
+			return unhealthy
+		})
 
 		mux := http.NewServeMux()
 		mux.Handle("/metrics", metrics.Default.Handler())

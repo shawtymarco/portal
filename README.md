@@ -48,6 +48,8 @@ Portal supports any combination of backend server software through its TCP socke
 - **Admin Console** — `players`, `servers`, `kick`, `transfer` and `drain` commands from stdin, no restart required
 - **Clustering** — Optional Redis-backed presence sharing so `FindPlayerRequest` can resolve players connected to a different proxy in the same network
 - **Server Groups & Draining** — Route players into named server pools with fallback chains, and drain a server ahead of a restart without dropping it from the registry
+- **Health Checking** — Real RakNet pings catch servers that are registered but hung or crashed, automatically pulling them out of (and back into) load balancing
+- **Weighted Load Balancing** — Give servers of different capacity a different share of new players; defaults to a plain even split if you never set it, so it works the same whether you run one server or fifty
 - **IP Guard** — Static IP bans and per-IP connection rate limiting at the player listener
 - **Metrics** — Optional Prometheus-compatible `/metrics` endpoint for player counts, transfers and socket clients
 - **Graceful Shutdown** — Clean disconnects and listener shutdown on SIGINT/SIGTERM
@@ -120,6 +122,12 @@ On first run, a `config.json` file is generated. Here's the full reference:
       "max_attempts": 5
     }
   },
+  "health_check": {
+    "enabled": true,
+    "interval_seconds": 10,
+    "timeout_seconds": 3,
+    "failure_threshold": 3
+  },
   "routing": {
     "default_group": "",
     "fallback_groups": []
@@ -169,6 +177,10 @@ On first run, a `config.json` file is generated. Here's the full reference:
 | `security.rate_limit.enabled` | Reject an IP once it connects too frequently | `true` |
 | `security.rate_limit.window_seconds` | Size of the sliding window connection attempts are counted over | `10` |
 | `security.rate_limit.max_attempts` | Max connection attempts allowed per IP within the window | `5` |
+| `health_check.enabled` | Periodically RakNet-ping registered servers and skip unreachable ones in load balancing | `true` |
+| `health_check.interval_seconds` | How often, in seconds, every registered server is pinged | `10` |
+| `health_check.timeout_seconds` | How long to wait for a ping response before counting it as failed | `3` |
+| `health_check.failure_threshold` | Consecutive failed pings before a server is marked unhealthy | `3` |
 | `routing.default_group` | Server group new players are load balanced into on join. Empty = balance across every registered server, ignoring groups | `""` |
 | `routing.fallback_groups` | Ordered list of groups to try if `default_group` has no available (non-draining) servers | `[]` |
 | `whitelist.enabled` | Enable username whitelist | `false` |
@@ -229,11 +241,18 @@ Portal communicates with backend servers via a binary TCP protocol:
 | `0x0B` | UpdatePlayerLatency | Proxy → Server | Player latency update |
 | `0x0C` | SetServerDraining | Server → Proxy | Mark/unmark the server as draining for load balancing |
 
-`RegisterServer` also carries a `Group` string field. Servers registering with the same group name are
-treated as a pool by a `GroupedLoadBalancer` (see `routing.default_group`/`routing.fallback_groups` above).
-A draining server (set via `SetServerDraining`) is skipped by both the built-in `SplitLoadBalancer` and
-`GroupedLoadBalancer` when picking a server for a newly joining player, while players already on it are
-unaffected — useful for taking a server out of rotation ahead of a restart.
+`RegisterServer` also carries `Group` (string) and `Weight` (uint32, 0 treated as 1) fields. Servers
+registering with the same group name are treated as a pool by a `GroupedLoadBalancer` (see
+`routing.default_group`/`routing.fallback_groups` above), and within a pool, `SplitLoadBalancer` and
+`GroupedLoadBalancer` both balance new players in proportion to `Weight` — a server with twice the weight of
+another gets roughly twice the players before being considered equally loaded. Leaving `Weight` at its
+default keeps a plain even split, so this is opt-in whether you're running a single server or a large fleet
+of mixed-capacity machines.
+
+A draining server (set via `SetServerDraining`) or a server currently failing health checks (see
+`health_check.*` above) is skipped by both load balancers when picking a server for a newly joining player,
+while players already on it are unaffected — useful for taking a server out of rotation ahead of a restart,
+or for automatically routing around one that's hung or crashed.
 
 `FindPlayerResponse` also carries a `Proxy` field, populated when `cluster.enabled` is set and the player
 was found on a *different* proxy instance via the shared Redis backend rather than this proxy's local
@@ -286,7 +305,7 @@ p.Events().Subscribe(event.TopicTransfer, func(payload any) {
 })
 ```
 
-Available topics: `TopicPlayerJoin`, `TopicPlayerQuit`, `TopicServerRegistered`, `TopicServerUnregistered`, `TopicTransfer`.
+Available topics: `TopicPlayerJoin`, `TopicPlayerQuit`, `TopicServerRegistered`, `TopicServerUnregistered`, `TopicTransfer`, `TopicServerHealthChanged`.
 
 ## Admin Console
 
@@ -296,7 +315,7 @@ The bundled binary reads admin commands from stdin while it runs:
 |:---|:---|
 | `help` | List available commands |
 | `players` | List online players and the server each is connected to |
-| `servers` | List registered servers, their group, player count and draining state |
+| `servers` | List registered servers, their group, weight, player count, draining and health state |
 | `kick <player> [reason]` | Disconnect a player |
 | `transfer <player> <server>` | Transfer a player to another registered server |
 | `drain <server> [on\|off]` | Mark a server as draining (default `on`) so it stops receiving new players |

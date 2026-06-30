@@ -57,7 +57,7 @@ func (p *Portal) adminListServers() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%d server(s) registered:", len(servers))
 	for _, srv := range servers {
-		fmt.Fprintf(&b, "\n  %s (%s) group=%q players=%d draining=%v", srv.Name(), srv.Address(), srv.Group(), srv.PlayerCount(), srv.Draining())
+		fmt.Fprintf(&b, "\n  %s (%s) group=%q weight=%d players=%d draining=%v healthy=%v", srv.Name(), srv.Address(), srv.Group(), srv.Weight(), srv.PlayerCount(), srv.Draining(), srv.Healthy())
 	}
 	return b.String()
 }

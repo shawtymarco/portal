@@ -18,6 +18,9 @@ const (
 	// TopicTransfer is published, with a TransferPayload, when a player transfer between servers completes,
 	// successfully or not.
 	TopicTransfer = "transfer"
+	// TopicServerHealthChanged is published, with a ServerHealthPayload, when a server's health check
+	// status flips between healthy and unhealthy.
+	TopicServerHealthChanged = "server_health_changed"
 )
 
 // PlayerPayload is published for TopicPlayerJoin and TopicPlayerQuit.
@@ -46,4 +49,14 @@ type TransferPayload struct {
 	ToServer string
 	// Err is the error that caused the transfer to fail, or nil if it succeeded.
 	Err error
+}
+
+// ServerHealthPayload is published for TopicServerHealthChanged.
+type ServerHealthPayload struct {
+	// Name is the name the server registered itself with.
+	Name string
+	// Address is the address of the server.
+	Address string
+	// Healthy is the server's new health status.
+	Healthy bool
 }
