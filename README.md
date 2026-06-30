@@ -45,6 +45,7 @@ Portal supports any combination of backend server software through its TCP socke
 - **Whitelist** — Built-in whitelist support
 - **Latency Reporting** — Real-time player latency tracking sent to backend servers
 - **Event Bus** — Subscribe to player join/quit, server register/unregister and transfer events via `Portal.Events()` without forking the proxy
+- **Admin Console** — `players`, `servers`, `kick`, `transfer` and `drain` commands from stdin, no restart required
 - **Server Groups & Draining** — Route players into named server pools with fallback chains, and drain a server ahead of a restart without dropping it from the registry
 - **IP Guard** — Static IP bans and per-IP connection rate limiting at the player listener
 - **Metrics** — Optional Prometheus-compatible `/metrics` endpoint for player counts, transfers and socket clients
@@ -263,6 +264,23 @@ p.Events().Subscribe(event.TopicTransfer, func(payload any) {
 ```
 
 Available topics: `TopicPlayerJoin`, `TopicPlayerQuit`, `TopicServerRegistered`, `TopicServerUnregistered`, `TopicTransfer`.
+
+## Admin Console
+
+The bundled binary reads admin commands from stdin while it runs:
+
+| Command | Description |
+|:---|:---|
+| `help` | List available commands |
+| `players` | List online players and the server each is connected to |
+| `servers` | List registered servers, their group, player count and draining state |
+| `kick <player> [reason]` | Disconnect a player |
+| `transfer <player> <server>` | Transfer a player to another registered server |
+| `drain <server> [on\|off]` | Mark a server as draining (default `on`) so it stops receiving new players |
+
+`Portal.HandleAdminCommand` and `Portal.ServeAdminConsole` are also available directly if you're embedding
+Portal as a library and want to wire commands up to a different transport (e.g. an in-game `/portal` command
+on a hub server).
 
 ## Client Libraries
 

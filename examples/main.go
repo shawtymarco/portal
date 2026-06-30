@@ -128,6 +128,7 @@ func main() {
 	}
 
 	go waitForShutdown(p, socketServer, logger)
+	go p.ServeAdminConsole(os.Stdin, os.Stdout)
 
 	for {
 		s, err := p.Accept()
