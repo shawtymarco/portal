@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/paroxity/portal"
+	"github.com/paroxity/portal/cluster"
+	"github.com/paroxity/portal/event"
 	"github.com/paroxity/portal/internal"
 	portallog "github.com/paroxity/portal/log"
 	"github.com/paroxity/portal/metrics"
@@ -112,6 +114,63 @@ func main() {
 		go socketServer.ReportPlayerLatency(time.Second * time.Duration(conf.PlayerLatency.UpdateInterval))
 	}
 
+	var clusterBackend cluster.Backend
+	clusterProxyID := conf.Cluster.ProxyID
+	if conf.Cluster.Enabled {
+		if clusterProxyID == "" {
+			clusterProxyID, _ = os.Hostname()
+		}
+		ttl := time.Duration(conf.Cluster.TTLSeconds) * time.Second
+
+		redisBackend, err := cluster.NewRedisBackend(conf.Cluster.Redis.Address, conf.Cluster.Redis.Password, conf.Cluster.Redis.DB, ttl)
+		if err != nil {
+			logger.Fatalf("unable to connect to cluster redis: %v", err)
+		}
+		clusterBackend = redisBackend
+		socketServer.SetCluster(clusterBackend)
+
+		p.Events().Subscribe(event.TopicPlayerJoin, func(payload any) {
+			pl := payload.(event.PlayerPayload)
+			s, ok := p.SessionStore().Load(pl.UUID)
+			if !ok {
+				return
+			}
+			if err := clusterBackend.Announce(clusterProxyID, pl.Name, s.Server().Name()); err != nil {
+				logger.Errorf("cluster announce failed for %s: %v", pl.Name, err)
+			}
+		})
+		p.Events().Subscribe(event.TopicPlayerQuit, func(payload any) {
+			pl := payload.(event.PlayerPayload)
+			if err := clusterBackend.Remove(clusterProxyID, pl.Name); err != nil {
+				logger.Errorf("cluster remove failed for %s: %v", pl.Name, err)
+			}
+		})
+		p.Events().Subscribe(event.TopicTransfer, func(payload any) {
+			t := payload.(event.TransferPayload)
+			if t.Err != nil {
+				return
+			}
+			if err := clusterBackend.Announce(clusterProxyID, t.PlayerName, t.ToServer); err != nil {
+				logger.Errorf("cluster update failed for %s: %v", t.PlayerName, err)
+			}
+		})
+
+		go func() {
+			ticker := time.NewTicker(ttl / 2)
+			defer ticker.Stop()
+			for range ticker.C {
+				for _, s := range p.SessionStore().All() {
+					name := s.Conn().IdentityData().DisplayName
+					if err := clusterBackend.Announce(clusterProxyID, name, s.Server().Name()); err != nil {
+						logger.Errorf("cluster heartbeat failed for %s: %v", name, err)
+					}
+				}
+			}
+		}()
+
+		logger.Infof("cluster presence sharing enabled (proxy id %q)", clusterProxyID)
+	}
+
 	if conf.Metrics.Enabled {
 		metrics.Default.RegisterGauge("portal_players_online", func() float64 { return float64(len(p.SessionStore().All())) })
 		metrics.Default.RegisterGauge("portal_servers_registered", func() float64 { return float64(len(p.ServerRegistry().Servers())) })
@@ -127,7 +186,7 @@ func main() {
 		}()
 	}
 
-	go waitForShutdown(p, socketServer, logger)
+	go waitForShutdown(p, socketServer, clusterBackend, clusterProxyID, logger)
 	go p.ServeAdminConsole(os.Stdin, os.Stdout)
 
 	for {
@@ -144,15 +203,24 @@ func main() {
 }
 
 // waitForShutdown blocks until an interrupt or termination signal is received, then gracefully disconnects
-// every connected session and closes the proxy's listeners before exiting the process.
-func waitForShutdown(p *portal.Portal, socketServer *socket.DefaultServer, logger internal.Logger) {
+// every connected session and closes the proxy's listeners before exiting the process. clusterBackend may
+// be nil if clustering is disabled.
+func waitForShutdown(p *portal.Portal, socketServer *socket.DefaultServer, clusterBackend cluster.Backend, clusterProxyID string, logger internal.Logger) {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 	<-sig
 
 	logger.Infof("shutting down...")
 	for _, s := range p.SessionStore().All() {
+		if clusterBackend != nil {
+			_ = clusterBackend.Remove(clusterProxyID, s.Conn().IdentityData().DisplayName)
+		}
 		s.Disconnect(text.Colourf("<yellow>Proxy is shutting down.</yellow>"))
+	}
+	if clusterBackend != nil {
+		if err := clusterBackend.Close(); err != nil {
+			logger.Errorf("failed to close cluster backend: %v", err)
+		}
 	}
 	if err := socketServer.Close(); err != nil {
 		logger.Errorf("failed to close socket server: %v", err)

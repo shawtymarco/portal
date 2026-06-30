@@ -46,6 +46,7 @@ Portal supports any combination of backend server software through its TCP socke
 - **Latency Reporting** — Real-time player latency tracking sent to backend servers
 - **Event Bus** — Subscribe to player join/quit, server register/unregister and transfer events via `Portal.Events()` without forking the proxy
 - **Admin Console** — `players`, `servers`, `kick`, `transfer` and `drain` commands from stdin, no restart required
+- **Clustering** — Optional Redis-backed presence sharing so `FindPlayerRequest` can resolve players connected to a different proxy in the same network
 - **Server Groups & Draining** — Route players into named server pools with fallback chains, and drain a server ahead of a restart without dropping it from the registry
 - **IP Guard** — Static IP bans and per-IP connection rate limiting at the player listener
 - **Metrics** — Optional Prometheus-compatible `/metrics` endpoint for player counts, transfers and socket clients
@@ -96,6 +97,16 @@ On first run, a `config.json` file is generated. Here's the full reference:
   "player_latency": {
     "report": true,
     "update_interval": 5
+  },
+  "cluster": {
+    "enabled": false,
+    "proxy_id": "",
+    "ttl_seconds": 300,
+    "redis": {
+      "address": "localhost:6379",
+      "password": "",
+      "db": 0
+    }
   },
   "metrics": {
     "enabled": false,
@@ -148,6 +159,12 @@ On first run, a `config.json` file is generated. Here's the full reference:
 | `player_latency.update_interval` | Latency report interval in seconds | `5` |
 | `metrics.enabled` | Serve Prometheus-style metrics at `http://<metrics.address>/metrics` | `false` |
 | `metrics.address` | Address the metrics HTTP endpoint listens on | `:9131` |
+| `cluster.enabled` | Share player presence with other Portal instances over Redis so `FindPlayerRequest` resolves across proxies | `false` |
+| `cluster.proxy_id` | ID this proxy reports itself as in the cluster. Empty = the machine's hostname | `""` |
+| `cluster.ttl_seconds` | How long a player's presence record survives without a refresh before expiring (crash safety net) | `300` |
+| `cluster.redis.address` | Redis server address (`host:port`) | `localhost:6379` |
+| `cluster.redis.password` | Redis auth password, if required | `""` |
+| `cluster.redis.db` | Redis logical database index | `0` |
 | `security.banned_ips` | IP addresses that are always rejected at the player listener | `[]` |
 | `security.rate_limit.enabled` | Reject an IP once it connects too frequently | `true` |
 | `security.rate_limit.window_seconds` | Size of the sliding window connection attempts are counted over | `10` |
@@ -217,6 +234,12 @@ treated as a pool by a `GroupedLoadBalancer` (see `routing.default_group`/`routi
 A draining server (set via `SetServerDraining`) is skipped by both the built-in `SplitLoadBalancer` and
 `GroupedLoadBalancer` when picking a server for a newly joining player, while players already on it are
 unaffected — useful for taking a server out of rotation ahead of a restart.
+
+`FindPlayerResponse` also carries a `Proxy` field, populated when `cluster.enabled` is set and the player
+was found on a *different* proxy instance via the shared Redis backend rather than this proxy's local
+session store. Clustering only answers "is this player online, and where" across proxies — it does not
+implement proxy-to-proxy transfer routing, so a backend server still needs its own way to act on a remote
+result (e.g. relaying a message rather than attempting to transfer the player directly).
 
 ## Quick Start Example
 

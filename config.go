@@ -57,6 +57,28 @@ type Config struct {
 		// UpdateInterval is the interval to report a player's ping if Report is true.
 		UpdateInterval int `json:"update_interval"`
 	} `json:"player_latency"`
+	// Cluster holds settings related to sharing player presence across multiple Portal instances, allowing
+	// FindPlayerRequest to resolve players connected to a different proxy in the cluster.
+	Cluster struct {
+		// Enabled determines whether cluster presence sharing is active.
+		Enabled bool `json:"enabled"`
+		// ProxyID identifies this proxy instance to the rest of the cluster. If left empty, the machine's
+		// hostname is used.
+		ProxyID string `json:"proxy_id"`
+		// TTLSeconds is how long a player's presence record survives in the backend without being
+		// refreshed before it is treated as stale. Acts as a safety net if a proxy crashes without
+		// cleanly removing its players.
+		TTLSeconds int `json:"ttl_seconds"`
+		// Redis holds the connection settings for the Redis-backed cluster backend.
+		Redis struct {
+			// Address is the address of the Redis server, in the format "host:port".
+			Address string `json:"address"`
+			// Password is the password used to authenticate to Redis, if required.
+			Password string `json:"password"`
+			// DB is the Redis logical database index to use.
+			DB int `json:"db"`
+		} `json:"redis"`
+	} `json:"cluster"`
 	// Metrics holds settings related to exposing Prometheus-style metrics over HTTP.
 	Metrics struct {
 		// Enabled determines whether the metrics HTTP endpoint should be served.
@@ -131,6 +153,8 @@ func DefaultConfig() (c Config) {
 	c.Security.RateLimit.WindowSeconds = 10
 	c.Security.RateLimit.MaxAttempts = 5
 	c.Metrics.Address = ":9131"
+	c.Cluster.TTLSeconds = 300
+	c.Cluster.Redis.Address = "localhost:6379"
 	c.ResourcePacks.Directory = "resource_packs"
 	c.ResourcePacks.HotReload.Interval = 30
 	c.MOTD = "Portal"

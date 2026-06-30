@@ -2,6 +2,7 @@ package socket
 
 import (
 	"crypto/tls"
+	"github.com/paroxity/portal/cluster"
 	"github.com/paroxity/portal/event"
 	"github.com/paroxity/portal/internal"
 	"github.com/paroxity/portal/server"
@@ -46,6 +47,10 @@ type Server interface {
 	// registering/unregistering. It may be nil if no bus was configured.
 	Events() *event.Bus
 
+	// Cluster returns the cross-proxy presence backend used to look up players connected to other proxies
+	// in the same cluster. It may be nil if clustering is not configured.
+	Cluster() cluster.Backend
+
 	// Close closes the socket server's listener, preventing it from accepting any further connections.
 	Close() error
 }
@@ -69,6 +74,7 @@ type DefaultServer struct {
 	sessionStore   *session.Store
 	serverRegistry *server.Registry
 	events         *event.Bus
+	cluster        cluster.Backend
 }
 
 // NewDefaultServer creates a new default server to be used for accepting socket connections. events may be
@@ -254,6 +260,17 @@ func (s *DefaultServer) ServerRegistry() *server.Registry {
 // Events ...
 func (s *DefaultServer) Events() *event.Bus {
 	return s.events
+}
+
+// Cluster ...
+func (s *DefaultServer) Cluster() cluster.Backend {
+	return s.cluster
+}
+
+// SetCluster sets the cross-proxy presence backend used to look up players connected to other proxies in
+// the same cluster. Passing nil disables cluster lookups.
+func (s *DefaultServer) SetCluster(c cluster.Backend) {
+	s.cluster = c
 }
 
 // Close ...
