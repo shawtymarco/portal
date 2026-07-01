@@ -13,6 +13,17 @@ import (
 // Redis server can't stall proxy operations (joins, quits, transfers, FindPlayer lookups) indefinitely.
 const redisRequestTimeout = 5 * time.Second
 
+// removeScript atomically deletes a player's presence record only if it's still owned by the calling
+// proxy, avoiding a race where a GET-then-DEL could delete a record another proxy just re-announced for
+// the same player (e.g. the player reconnected to a different proxy between the GET and the DEL).
+var removeScript = redis.NewScript(`
+	local v = redis.call("GET", KEYS[1])
+	if v and string.sub(v, 1, string.len(ARGV[1])) == ARGV[1] then
+		return redis.call("DEL", KEYS[1])
+	end
+	return 0
+`)
+
 // RedisBackend is a Backend implementation that stores player presence in Redis.
 //
 // Each player is stored under a "portal:player:<lowercased name>" key with a value of "<proxyID>|<server>"
@@ -50,18 +61,9 @@ func (b *RedisBackend) Remove(proxyID, playerName string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), redisRequestTimeout)
 	defer cancel()
 
-	val, err := b.client.Get(ctx, playerKey(playerName)).Result()
-	if errors.Is(err, redis.Nil) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	if !strings.HasPrefix(val, proxyID+"|") {
-		// The record belongs to a different proxy (the player reconnected elsewhere); leave it alone.
-		return nil
-	}
-	return b.client.Del(ctx, playerKey(playerName)).Err()
+	// The ownership check-and-delete must be atomic: a plain GET followed by DEL could race with another
+	// proxy's Announce for the same player (e.g. a fast reconnect elsewhere) and delete its fresh record.
+	return removeScript.Run(ctx, b.client, []string{playerKey(playerName)}, proxyID+"|").Err()
 }
 
 // Lookup ...
