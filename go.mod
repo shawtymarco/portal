@@ -10,7 +10,7 @@ require (
 	github.com/sandertv/go-raknet v1.15.1-0.20260112202637-beca0b10c217
 	github.com/sandertv/gophertunnel v1.57.0
 	github.com/scylladb/go-set v1.0.3-0.20200225121959-cc7b2070d91e
-	github.com/sirupsen/logrus v1.9.0
+	github.com/sirupsen/logrus v1.9.3
 	go.uber.org/atomic v1.11.0
 )
 
