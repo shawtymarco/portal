@@ -38,8 +38,9 @@ type SimpleIPGuard struct {
 	window           time.Duration
 	limit            int
 
-	mu   sync.Mutex
-	hits map[string]*ipWindow
+	mu        sync.Mutex
+	hits      map[string]*ipWindow
+	lastSweep time.Time
 }
 
 // NewSimpleIPGuard creates an IPGuard which bans the IPs provided and, if rateLimitEnabled is true, rejects
@@ -73,6 +74,19 @@ func (g *SimpleIPGuard) Allow(addr net.Addr) (bool, string) {
 	now := time.Now()
 	g.mu.Lock()
 	defer g.mu.Unlock()
+
+	// Lazily evict expired windows so hits doesn't grow without bound under sustained traffic from many
+	// distinct or rotating source IPs. Amortized to once per window instead of every call, since scanning
+	// the whole map on every connection attempt would itself become a bottleneck under that same abuse
+	// scenario.
+	if now.Sub(g.lastSweep) > g.window {
+		for h, hw := range g.hits {
+			if now.Sub(hw.windowStart) > g.window {
+				delete(g.hits, h)
+			}
+		}
+		g.lastSweep = now
+	}
 
 	w, ok := g.hits[host]
 	if !ok || now.Sub(w.windowStart) > g.window {
