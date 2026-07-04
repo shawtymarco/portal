@@ -111,7 +111,12 @@ func handlePackets(s *Session) {
 					}
 				}
 			case *packet.Text:
-				pk.XUID = ""
+				// Overwrite rather than clear: Dragonfly's text handler disconnects
+				// the player when the chat XUID doesn't match the session identity
+				// (dragonfly session/handler_text.go). Stamp the authenticated XUID
+				// forwarded at dial time — for legacy-auth downstreams the dialed
+				// identity XUID is already empty, preserving the old behaviour.
+				pk.XUID = s.ServerConn().IdentityData().XUID
 			}
 
 			if s.Transferring() {
