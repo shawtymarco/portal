@@ -135,6 +135,12 @@ func handlePackets(s *Session) {
 				if conn != s.ServerConn() {
 					continue
 				}
+				// Always surface WHY the server leg died: this is the error that
+				// takes the whole session (and the client) down with it.
+				if !errors.Is(err, net.ErrClosed) {
+					s.log.Errorf("%s: failed to read packet from server connection (%s): %v",
+						s.conn.IdentityData().DisplayName, s.Server().Name(), err)
+				}
 				ctx := event.C()
 				s.handler().HandleServerDisconnect(ctx, err)
 
